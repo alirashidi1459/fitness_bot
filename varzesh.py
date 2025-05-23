@@ -1,0 +1,87 @@
+import logging
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
+
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+BLOOD, HEIGHT, WEIGHT, AGE, ACTIVITY = range(5)
+user_data = {}
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("سلام! خوش اومدی به ربات برنامه تمرینی و غذایی 💪\nلطفاً گروه خونیت رو وارد کن (مثلاً: O+, A-, B+ ...)")
+    return BLOOD
+
+async def blood_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_data["blood"] = update.message.text
+    await update.message.reply_text("قدت رو وارد کن (به سانتی‌متر):")
+    return HEIGHT
+
+async def height_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_data["height"] = int(update.message.text)
+    await update.message.reply_text("وزنت رو وارد کن (به کیلوگرم):")
+    return WEIGHT
+
+async def weight_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_data["weight"] = int(update.message.text)
+    await update.message.reply_text("سنت رو وارد کن:")
+    return AGE
+
+async def age_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_data["age"] = int(update.message.text)
+    reply_keyboard = [["مبتدی", "متوسط", "حرفه‌ای"]]
+    await update.message.reply_text(
+        "سطح فعالیتت رو انتخاب کن:", 
+        reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
+    )
+    return ACTIVITY
+
+async def activity_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_data["activity"] = update.message.text
+    bmi = user_data["weight"] / ((user_data["height"] / 100) ** 2)
+    bmi_status = ("کم‌وزن" if bmi < 18.5 else "نرمال" if bmi < 25 else "اضافه وزن" if bmi < 30 else "چاق")
+
+    response = f"""
+✅ اطلاعات شما:
+گروه خونی: {user_data["blood"]}
+قد: {user_data["height"]} سانتی‌متر
+وزن: {user_data["weight"]} کیلوگرم
+سن: {user_data["age"]}
+سطح فعالیت: {user_data["activity"]}
+شاخص توده بدنی (BMI): {bmi:.1f} → {bmi_status}
+
+📋 برنامه پیشنهادی:
+- تمرین: ۵ روز در هفته، ترکیبی از هوازی و مقاومتی
+- تغذیه: {"پرپروتئین و پرکالری" if bmi < 18.5 else "متعادل با پروتئین متوسط" if bmi < 25 else "کم‌کالری و کم‌چرب"}
+
+💬 برای شروع دوباره /start را بزن.
+"""
+    await update.message.reply_text(response)
+    return ConversationHandler.END
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("عملیات لغو شد. برای شروع /start را بزن.")
+    return ConversationHandler.END
+
+def main():
+    import os
+    TOKEN = os.environ.get("BOT_TOKEN")
+    app = ApplicationBuilder().token(TOKEN).build()
+
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            BLOOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, blood_input)],
+            HEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, height_input)],
+            WEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, weight_input)],
+            AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, age_input)],
+            ACTIVITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, activity_input)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)]
+    )
+
+    app.add_handler(conv_handler)
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
